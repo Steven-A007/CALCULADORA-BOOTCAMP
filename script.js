@@ -1,313 +1,526 @@
-(function(){
-  let tokens = [];
-  let shiftOn = false;
-  let angleMode = 'deg';
-  let justEvaluated = false;
+(function () {
+  'use strict';
 
-  const pad = document.getElementById('pad');
-  const exprLine = document.getElementById('exprLine');
-  const resultLine = document.getElementById('resultLine');
-  const shiftKey = document.getElementById('shiftKey');
-  const angleBtn = document.getElementById('angleMode');
-
-  function last(){ return tokens[tokens.length-1]; }
-
-  function pushNumber(d){
-    const l = last();
-    if (justEvaluated){ tokens = []; justEvaluated = false; }
-    if (l && l.type === 'number'){ l.text += d; }
-    else tokens.push({type:'number', text:d});
-  }
-
-  function pushDot(){
-    const l = last();
-    if (justEvaluated){ tokens = []; justEvaluated = false; }
-    if (l && l.type === 'number'){
-      if (!l.text.includes('.')) l.text += '.';
-    } else {
-      tokens.push({type:'number', text:'0.'});
-    }
-  }
-
-  function pushToken(type, text){
-    if (justEvaluated){
-      justEvaluated = false;
-      if (type === 'operator'){}
-      else tokens = [];
-    }
-    tokens.push({type, text});
-  }
-
-  function backspace(){
-    const l = last();
-    if (!l) return;
-    if (l.type === 'number' && l.text.length > 1){
-      l.text = l.text.slice(0, -1);
-    } else {
-      tokens.pop();
-    }
-    justEvaluated = false;
-  }
-
-  function clearAll(){
-    tokens = [];
-    justEvaluated = false;
-  }
-
-  function toRad(x){ return angleMode === 'deg' ? x * Math.PI / 180 : x; }
-  function fromRad(x){ return angleMode === 'deg' ? x * 180 / Math.PI : x; }
-
-  const FUNCS = {
-    sin:  a => Math.sin(toRad(a)),
-    cos:  a => Math.cos(toRad(a)),
-    tan:  a => Math.tan(toRad(a)),
-    asin: a => fromRad(Math.asin(a)),
-    acos: a => fromRad(Math.acos(a)),
-    atan: a => fromRad(Math.atan(a)),
-    ln:   a => Math.log(a),
-    log:  a => Math.log10(a),
-    exp:  a => Math.exp(a),
-    pow10:a => Math.pow(10, a),
-    sqrt: a => Math.sqrt(a)
+  const TOKEN_TYPES = {
+    NUMBER: 'number',
+    OPERATOR: 'operator',
+    CONSTANT: 'constant',
+    OPEN_PAREN: 'open',
+    CLOSE_PAREN: 'close',
+    FUNCTION: 'function',
+    POSTFIX: 'postfix',
   };
 
-  function factorial(n){
-    if (n < 0 || !Number.isInteger(n)) return NaN;
-    let r = 1;
-    for (let i = 2; i <= n; i++) r *= i;
-    return r;
+  const ANGLE_MODES = { DEG: 'deg', RAD: 'rad' };
+
+  let expressionTokens = [];
+  let isShiftActive = false;
+  let angleMode = ANGLE_MODES.DEG;
+  let hasJustEvaluated = false;
+
+  const padElement = document.getElementById('pad');
+  const expressionLineElement = document.getElementById('exprLine');
+  const resultLineElement = document.getElementById('resultLine');
+  const shiftKeyElement = document.getElementById('shiftKey');
+  const angleModeButton = document.getElementById('angleMode');
+  const historyToggleButton = document.getElementById('historyToggle');
+  const historyPanelElement = document.getElementById('historyPanel');
+  const historyListElement = document.getElementById('historyList');
+  const historyEmptyElement = document.getElementById('historyEmpty');
+  const historyClearButton = document.getElementById('historyClear');
+  const HISTORY_STORAGE_KEY = 'sci100_history';
+  const HISTORY_MAX_ENTRIES = 50;
+  let historyEntries = loadHistory();
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (error) {
+      return [];
+    }
   }
 
-  function evaluate(toks){
-    let pos = 0;
-    function peek(){ return toks[pos]; }
-    function advance(){ return toks[pos++]; }
+  function saveHistory() {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyEntries));
+    } catch (error) {
+    }
+  }
 
-    function parseExpression(){
-      let v = parseTerm();
-      while (peek() && peek().type === 'operator' && (peek().text === '+' || peek().text === '−')){
-        const op = advance().text;
-        const rhs = parseTerm();
-        v = op === '+' ? v + rhs : v - rhs;
+  function addHistoryEntry(expressionText, formattedResult) {
+    historyEntries.push({ expression: expressionText, result: formattedResult });
+    if (historyEntries.length > HISTORY_MAX_ENTRIES) {
+      historyEntries = historyEntries.slice(historyEntries.length - HISTORY_MAX_ENTRIES);
+    }
+    saveHistory();
+    renderHistory();
+  }
+
+  function clearHistory() {
+    historyEntries = [];
+    saveHistory();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    historyListElement.querySelectorAll('.history-item').forEach((el) => el.remove());
+    historyEmptyElement.style.display = historyEntries.length ? 'none' : '';
+
+    for (let i = historyEntries.length - 1; i >= 0; i--) {
+      const entry = historyEntries[i];
+      const item = document.createElement('li');
+      item.className = 'history-item';
+      item.innerHTML = `
+        <div class="history-expr">${entry.expression} =</div>
+        <div class="history-result">${entry.result}</div>
+      `;
+      item.addEventListener('click', () => reuseHistoryEntry(entry));
+      historyListElement.appendChild(item);
+    }
+  }
+
+  function reuseHistoryEntry(entry) {
+    expressionTokens = [{ type: TOKEN_TYPES.NUMBER, text: entry.result }];
+    hasJustEvaluated = true;
+    renderCurrentExpression();
+    closeHistoryPanel();
+  }
+
+  function toggleHistoryPanel() {
+    const isOpen = historyPanelElement.classList.toggle('open');
+    historyToggleButton.classList.toggle('active', isOpen);
+  }
+
+  function closeHistoryPanel() {
+    historyPanelElement.classList.remove('open');
+    historyToggleButton.classList.remove('active');
+  }
+
+  historyToggleButton.addEventListener('click', toggleHistoryPanel);
+  historyClearButton.addEventListener('click', clearHistory);
+
+  function getLastToken() {
+    return expressionTokens[expressionTokens.length - 1];
+  }
+
+  function resetIfJustEvaluated() {
+    if (hasJustEvaluated) {
+      expressionTokens = [];
+      hasJustEvaluated = false;
+    }
+  }
+
+  function addDigit(digit) {
+    resetIfJustEvaluated();
+    const lastToken = getLastToken();
+    if (lastToken && lastToken.type === TOKEN_TYPES.NUMBER) {
+      lastToken.text += digit;
+    } else {
+      expressionTokens.push({ type: TOKEN_TYPES.NUMBER, text: digit });
+    }
+  }
+
+  function addDecimalPoint() {
+    resetIfJustEvaluated();
+    const lastToken = getLastToken();
+    if (lastToken && lastToken.type === TOKEN_TYPES.NUMBER) {
+      if (!lastToken.text.includes('.')) {
+        lastToken.text += '.';
       }
-      return v;
+    } else {
+      expressionTokens.push({ type: TOKEN_TYPES.NUMBER, text: '0.' });
     }
+  }
 
-    function startsFactor(t){
-      return t && (t.type === 'number' || t.type === 'constant' || t.type === 'function' || t.type === 'open');
-    }
-
-    function parseTerm(){
-      let v = parseFactor();
-      while (peek() && (
-        (peek().type === 'operator' && (peek().text === '×' || peek().text === '÷' || peek().text === 'mod')) ||
-        startsFactor(peek())
-      )){
-        let op = '×';
-        if (peek().type === 'operator'){ op = advance().text; }
-        const rhs = parseFactor();
-        if (op === '×') v = v * rhs;
-        else if (op === '÷') v = v / rhs;
-        else v = v % rhs;
+  function addToken(type, text) {
+    if (hasJustEvaluated) {
+      hasJustEvaluated = false;
+      if (type !== TOKEN_TYPES.OPERATOR) {
+        expressionTokens = [];
       }
-      return v;
+    }
+    if (type === TOKEN_TYPES.OPERATOR) {
+      const lastToken = getLastToken();
+      if (lastToken && lastToken.type === TOKEN_TYPES.OPERATOR) {
+        lastToken.text = text;
+        return;
+      }
+      if (!lastToken && text !== '−') {
+        return;
+      }
+    }
+    expressionTokens.push({ type, text });
+  }
+
+  function removeLastCharacterOrToken() {
+    const lastToken = getLastToken();
+    if (!lastToken) return;
+
+    const isMultiDigitNumber = lastToken.type === TOKEN_TYPES.NUMBER && lastToken.text.length > 1;
+    if (isMultiDigitNumber) {
+      lastToken.text = lastToken.text.slice(0, -1);
+    } else {
+      expressionTokens.pop();
+    }
+    hasJustEvaluated = false;
+  }
+
+  function clearExpression() {
+    expressionTokens = [];
+    hasJustEvaluated = false;
+  }
+
+  function degreesToRadians(value) {
+    return angleMode === ANGLE_MODES.DEG ? (value * Math.PI) / 180 : value;
+  }
+
+  function radiansToDegrees(value) {
+    return angleMode === ANGLE_MODES.DEG ? (value * 180) / Math.PI : value;
+  }
+
+  const MATH_FUNCTIONS = {
+    sin: (a) => Math.sin(degreesToRadians(a)),
+    cos: (a) => Math.cos(degreesToRadians(a)),
+    tan: (a) => Math.tan(degreesToRadians(a)),
+    asin: (a) => radiansToDegrees(Math.asin(a)),
+    acos: (a) => radiansToDegrees(Math.acos(a)),
+    atan: (a) => radiansToDegrees(Math.atan(a)),
+    ln: (a) => Math.log(a),
+    log: (a) => Math.log10(a),
+    exp: (a) => Math.exp(a),
+    pow10: (a) => Math.pow(10, a),
+    sqrt: (a) => Math.sqrt(a),
+  };
+
+  function factorial(n) {
+    if (n < 0 || !Number.isInteger(n)) return NaN;
+    let result = 1;
+    for (let i = 2; i <= n; i++) result *= i;
+    return result;
+  }
+
+  function evaluateExpression(tokens) {
+    let position = 0;
+
+    function peek() {
+      return tokens[position];
     }
 
-    function parseFactor(){
-      let v = parseUnary();
-      if (peek() && peek().type === 'operator' && peek().text === '^'){
+    function advance() {
+      return tokens[position++];
+    }
+
+    function isOperator(token, symbol) {
+      return !!token && token.type === TOKEN_TYPES.OPERATOR && token.text === symbol;
+    }
+
+    function canStartFactor(token) {
+      if (!token) return false;
+      return (
+        token.type === TOKEN_TYPES.NUMBER ||
+        token.type === TOKEN_TYPES.CONSTANT ||
+        token.type === TOKEN_TYPES.FUNCTION ||
+        token.type === TOKEN_TYPES.OPEN_PAREN
+      );
+    }
+
+    function expectToken(type, errorMessage) {
+      if (!peek() || peek().type !== type) throw new Error(errorMessage);
+      advance();
+    }
+
+    function parseExpression() {
+      let value = parseTerm();
+      while (isOperator(peek(), '+') || isOperator(peek(), '−')) {
+        const operator = advance().text;
+        const rightSide = parseTerm();
+        value = operator === '+' ? value + rightSide : value - rightSide;
+      }
+      return value;
+    }
+
+    function parseTerm() {
+      let value = parseFactor();
+      while (
+        isOperator(peek(), '×') ||
+        isOperator(peek(), '÷') ||
+        isOperator(peek(), 'mod') ||
+        canStartFactor(peek())
+      ) {
+        const operator = peek().type === TOKEN_TYPES.OPERATOR ? advance().text : '×';
+        const rightSide = parseFactor();
+        if (operator === '×') value *= rightSide;
+        else if (operator === '÷') value /= rightSide;
+        else value %= rightSide;
+      }
+      return value;
+    }
+
+    function parseFactor() {
+      const value = parseUnary();
+      if (isOperator(peek(), '^')) {
         advance();
-        const rhs = parseFactor();
-        v = Math.pow(v, rhs);
+        const exponent = parseFactor();
+        return Math.pow(value, exponent);
       }
-      return v;
+      return value;
     }
 
-    function parseUnary(){
-      if (peek() && peek().type === 'operator' && peek().text === '−'){
+    function parseUnary() {
+      if (isOperator(peek(), '−')) {
         advance();
         return -parseUnary();
       }
       return parsePostfix();
     }
 
-    function parsePostfix(){
-      let v = parsePrimary();
-      while (peek() && peek().type === 'postfix'){
+    function parsePostfix() {
+      let value = parsePrimary();
+      while (peek() && peek().type === TOKEN_TYPES.POSTFIX) {
         advance();
-        v = factorial(v);
+        value = factorial(value);
       }
-      return v;
+      return value;
     }
 
-    function parsePrimary(){
-      const t = peek();
-      if (!t) throw new Error('unexpected end');
-      if (t.type === 'number'){
-        advance();
-        return parseFloat(t.text);
+    function parsePrimary() {
+      const token = peek();
+      if (!token) throw new Error('Expresión incompleta');
+
+      switch (token.type) {
+        case TOKEN_TYPES.NUMBER:
+          advance();
+          return parseFloat(token.text);
+
+        case TOKEN_TYPES.CONSTANT:
+          advance();
+          return token.text === 'π' ? Math.PI : Math.E;
+
+        case TOKEN_TYPES.OPEN_PAREN: {
+          advance();
+          const value = parseExpression();
+          expectToken(TOKEN_TYPES.CLOSE_PAREN, 'Falta un paréntesis de cierre ")"');
+          return value;
+        }
+
+        case TOKEN_TYPES.FUNCTION: {
+          advance();
+          expectToken(TOKEN_TYPES.OPEN_PAREN, 'Falta un paréntesis de apertura "(" después de la función');
+          const argument = parseExpression();
+          expectToken(TOKEN_TYPES.CLOSE_PAREN, 'Falta un paréntesis de cierre ")"');
+          return MATH_FUNCTIONS[token.text](argument);
+        }
+
+        default:
+          throw new Error(`Token inesperado: "${token.text}"`);
       }
-      if (t.type === 'constant'){
-        advance();
-        return t.text === 'π' ? Math.PI : Math.E;
-      }
-      if (t.type === 'open'){
-        advance();
-        const v = parseExpression();
-        if (!peek() || peek().type !== 'close') throw new Error('missing )');
-        advance();
-        return v;
-      }
-      if (t.type === 'function'){
-        advance();
-        if (!peek() || peek().type !== 'open') throw new Error('missing (');
-        advance();
-        const v = parseExpression();
-        if (!peek() || peek().type !== 'close') throw new Error('missing )');
-        advance();
-        return FUNCS[t.text](v);
-      }
-      throw new Error('unexpected token');
     }
 
     const result = parseExpression();
-    if (pos !== toks.length) throw new Error('trailing tokens');
+    if (position !== tokens.length) throw new Error('Sobran símbolos al final de la expresión');
     return result;
   }
 
-  function formatNumber(x){
-    if (typeof x !== 'number' || !isFinite(x) || isNaN(x)) return 'Error';
-    if (Object.is(x, -0)) x = 0;
-    if (Math.abs(x) > 0 && (Math.abs(x) < 1e-9 || Math.abs(x) >= 1e15)){
-      return x.toExponential(6).replace(/e\+?/, 'e');
+  function formatNumber(value) {
+    if (typeof value !== 'number' || !isFinite(value) || isNaN(value)) return 'Error';
+    if (Object.is(value, -0)) value = 0;
+
+    const absValue = Math.abs(value);
+    const isTooSmallOrTooBig = absValue > 0 && (absValue < 1e-9 || absValue >= 1e15);
+    if (isTooSmallOrTooBig) {
+      return value.toExponential(6).replace(/e\+?/, 'e');
     }
-    let s = parseFloat(x.toPrecision(12)).toString();
-    return s;
+
+    return parseFloat(value.toPrecision(12)).toString();
   }
 
-
-  function render(){
-    const text = tokens.map(t => t.text).join('') || '0';
-    resultLine.textContent = text;
-    resultLine.classList.toggle('long', text.length > 9);
-    exprLine.textContent = '\u00A0';
+  function renderCurrentExpression() {
+    const text = expressionTokens.map((t) => t.text).join('') || '0';
+    resultLineElement.textContent = text;
+    resultLineElement.classList.toggle('long', text.length > 9);
+    expressionLineElement.textContent = '\u00A0';
   }
 
-  function doEquals(){
-    if (!tokens.length) return;
-    const exprText = tokens.map(t => t.text).join('');
+  function showResult(expressionText, formattedResult) {
+    expressionLineElement.textContent = `${expressionText} =`;
+    resultLineElement.textContent = formattedResult;
+    resultLineElement.classList.toggle('long', formattedResult.length > 9);
+  }
+
+  function showError(expressionText) {
+    expressionLineElement.textContent = expressionText;
+    resultLineElement.textContent = 'Error';
+    resultLineElement.classList.remove('long');
+    expressionTokens = [];
+    hasJustEvaluated = false;
+  }
+
+  function evaluateAndShowResult() {
+    if (!expressionTokens.length) return;
+
+    const expressionText = expressionTokens.map((t) => t.text).join('');
+
     try {
-      const v = evaluate(tokens);
-      const formatted = formatNumber(v);
-      if (formatted === 'Error'){
-        exprLine.textContent = exprText;
-        resultLine.textContent = 'Error';
-        resultLine.classList.remove('long');
-        tokens = [];
-        justEvaluated = false;
+      const value = evaluateExpression(expressionTokens);
+      const formatted = formatNumber(value);
+
+      if (formatted === 'Error') {
+        showError(expressionText);
         return;
       }
-      exprLine.textContent = exprText + ' =';
-      resultLine.textContent = formatted;
-      resultLine.classList.toggle('long', formatted.length > 9);
-      tokens = [{type:'number', text: formatted}];
-      justEvaluated = true;
-    } catch(e){
-      exprLine.textContent = exprText;
-      resultLine.textContent = 'Error';
-      resultLine.classList.remove('long');
-      tokens = [];
-      justEvaluated = false;
+
+      showResult(expressionText, formatted);
+      addHistoryEntry(expressionText, formatted);
+      expressionTokens = [{ type: TOKEN_TYPES.NUMBER, text: formatted }];
+      hasJustEvaluated = true;
+    } catch (error) {
+      showError(expressionText);
     }
   }
 
-  function toggleShift(){
-    shiftOn = !shiftOn;
-    shiftKey.classList.toggle('active', shiftOn);
-    pad.classList.toggle('shifted', shiftOn);
+  function applySquare() {
+    addToken(TOKEN_TYPES.OPERATOR, '^');
+    addDigit('2');
   }
 
-  function toggleAngleMode(){
-    angleMode = angleMode === 'deg' ? 'rad' : 'deg';
-    angleBtn.textContent = angleMode.toUpperCase();
+  function applySquareRoot() {
+    resetIfJustEvaluated();
+    expressionTokens.push({ type: TOKEN_TYPES.FUNCTION, text: 'sqrt' });
+    expressionTokens.push({ type: TOKEN_TYPES.OPEN_PAREN, text: '(' });
   }
 
-  pad.addEventListener('click', (e) => {
-    const btn = e.target.closest('button.key');
-    if (!btn) return;
-    const action = btn.dataset.action;
-
-    switch(action){
-      case 'digit': pushNumber(btn.dataset.value); break;
-      case 'dot': pushDot(); break;
-      case 'op': pushToken('operator', btn.dataset.value); break;
-      case 'const': pushToken('constant', btn.dataset.value); break;
-      case 'paren-open': pushToken('open', '('); break;
-      case 'paren-close': pushToken('close', ')'); break;
-      case 'factorial': pushToken('postfix', '!'); break;
-      case 'power': pushToken('operator', '^'); break;
-      case 'mod': pushToken('operator', 'mod'); break;
-      case 'square':
-        pushToken('operator', '^');
-        pushNumber('2');
-        break;
-      case 'sqrt':
-        if (justEvaluated){ tokens = []; justEvaluated = false; }
-        tokens.push({type:'function', text:'sqrt'});
-        tokens.push({type:'open', text:'('});
-        break;
-      case 'reciprocal': {
-        const l = last();
-        if (l && l.type === 'number'){
-          tokens.pop();
-          tokens.push({type:'number', text:'1'});
-          tokens.push({type:'operator', text:'÷'});
-          tokens.push({type:'number', text:l.text});
-        }
-        justEvaluated = false;
-        break;
-      }
-      case 'sign': {
-        const l = last();
-        if (l && l.type === 'number'){
-          l.text = l.text.startsWith('-') ? l.text.slice(1) : '-' + l.text;
-        } else {
-          tokens.push({type:'number', text:'-'});
-        }
-        justEvaluated = false;
-        break;
-      }
-      case 'func': {
-        if (justEvaluated){ tokens = []; justEvaluated = false; }
-        const fname = shiftOn ? btn.dataset.alt : btn.dataset.value;
-        tokens.push({type:'function', text: fname});
-        tokens.push({type:'open', text:'('});
-        break;
-      }
-      case 'backspace': backspace(); break;
-      case 'clear': clearAll(); break;
-      case 'shift': toggleShift(); break;
-      case 'equals': doEquals(); return;
+  function applyReciprocal() {
+    const lastToken = getLastToken();
+    if (lastToken && lastToken.type === TOKEN_TYPES.NUMBER) {
+      expressionTokens.pop();
+      expressionTokens.push({ type: TOKEN_TYPES.NUMBER, text: '1' });
+      expressionTokens.push({ type: TOKEN_TYPES.OPERATOR, text: '÷' });
+      expressionTokens.push({ type: TOKEN_TYPES.NUMBER, text: lastToken.text });
     }
-    render();
+    hasJustEvaluated = false;
+  }
+
+  function applySignToggle() {
+    const lastToken = getLastToken();
+    if (lastToken && lastToken.type === TOKEN_TYPES.NUMBER) {
+      lastToken.text = lastToken.text.startsWith('-') ? lastToken.text.slice(1) : `-${lastToken.text}`;
+    } else {
+      expressionTokens.push({ type: TOKEN_TYPES.NUMBER, text: '-' });
+    }
+    hasJustEvaluated = false;
+  }
+
+  function applyFunction(button) {
+    resetIfJustEvaluated();
+    const functionName = isShiftActive ? button.dataset.alt : button.dataset.value;
+    expressionTokens.push({ type: TOKEN_TYPES.FUNCTION, text: functionName });
+    expressionTokens.push({ type: TOKEN_TYPES.OPEN_PAREN, text: '(' });
+  }
+
+  function toggleShift() {
+    isShiftActive = !isShiftActive;
+    shiftKeyElement.classList.toggle('active', isShiftActive);
+    padElement.classList.toggle('shifted', isShiftActive);
+  }
+
+  function toggleAngleMode() {
+    angleMode = angleMode === ANGLE_MODES.DEG ? ANGLE_MODES.RAD : ANGLE_MODES.DEG;
+    angleModeButton.textContent = angleMode.toUpperCase();
+  }
+
+  const BUTTON_ACTIONS = {
+    digit: (button) => addDigit(button.dataset.value),
+    dot: () => addDecimalPoint(),
+    op: (button) => addToken(TOKEN_TYPES.OPERATOR, button.dataset.value),
+    const: (button) => addToken(TOKEN_TYPES.CONSTANT, button.dataset.value),
+    'paren-open': () => addToken(TOKEN_TYPES.OPEN_PAREN, '('),
+    'paren-close': () => addToken(TOKEN_TYPES.CLOSE_PAREN, ')'),
+    factorial: () => addToken(TOKEN_TYPES.POSTFIX, '!'),
+    power: () => addToken(TOKEN_TYPES.OPERATOR, '^'),
+    mod: () => addToken(TOKEN_TYPES.OPERATOR, 'mod'),
+    square: () => applySquare(),
+    sqrt: () => applySquareRoot(),
+    reciprocal: () => applyReciprocal(),
+    sign: () => applySignToggle(),
+    func: (button) => applyFunction(button),
+    backspace: () => removeLastCharacterOrToken(),
+    clear: () => clearExpression(),
+    shift: () => toggleShift(),
+  };
+
+  padElement.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+
+    const action = button.dataset.action;
+
+    try {
+      if (action === 'equals') {
+        evaluateAndShowResult();
+        return;
+      }
+
+      const handler = BUTTON_ACTIONS[action];
+      if (handler) {
+        handler(button);
+      }
+
+      renderCurrentExpression();
+    } catch (error) {
+      console.error('Error al procesar el botón:', error);
+      showError(expressionTokens.map((t) => t.text).join(''));
+      renderCurrentExpression();
+    }
   });
 
-  angleBtn.addEventListener('click', toggleAngleMode);
+  angleModeButton.addEventListener('click', toggleAngleMode);
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key >= '0' && e.key <= '9'){ pushNumber(e.key); render(); }
-    else if (e.key === '.'){ pushDot(); render(); }
-    else if (e.key === '+'){ pushToken('operator','+'); render(); }
-    else if (e.key === '-'){ pushToken('operator','−'); render(); }
-    else if (e.key === '*'){ pushToken('operator','×'); render(); }
-    else if (e.key === '/'){ e.preventDefault(); pushToken('operator','÷'); render(); }
-    else if (e.key === '^'){ pushToken('operator','^'); render(); }
-    else if (e.key === '('){ pushToken('open','('); render(); }
-    else if (e.key === ')'){ pushToken('close',')'); render(); }
-    else if (e.key === 'Enter' || e.key === '='){ e.preventDefault(); doEquals(); }
-    else if (e.key === 'Backspace'){ backspace(); render(); }
-    else if (e.key === 'Escape'){ clearAll(); render(); }
+  const KEYBOARD_SHORTCUTS = {
+    '.': () => addDecimalPoint(),
+    '+': () => addToken(TOKEN_TYPES.OPERATOR, '+'),
+    '-': () => addToken(TOKEN_TYPES.OPERATOR, '−'),
+    '*': () => addToken(TOKEN_TYPES.OPERATOR, '×'),
+    '^': () => addToken(TOKEN_TYPES.OPERATOR, '^'),
+    '(': () => addToken(TOKEN_TYPES.OPEN_PAREN, '('),
+    ')': () => addToken(TOKEN_TYPES.CLOSE_PAREN, ')'),
+    Backspace: () => removeLastCharacterOrToken(),
+    Escape: () => clearExpression(),
+  };
+
+  window.addEventListener('keydown', (event) => {
+    try {
+      const isDigit = event.key >= '0' && event.key <= '9';
+
+      if (isDigit) {
+        addDigit(event.key);
+        renderCurrentExpression();
+        return;
+      }
+
+      if (event.key === '/') {
+        event.preventDefault();
+        addToken(TOKEN_TYPES.OPERATOR, '÷');
+        renderCurrentExpression();
+        return;
+      }
+
+      if (event.key === 'Enter' || event.key === '=') {
+        event.preventDefault();
+        evaluateAndShowResult();
+        return;
+      }
+
+      const shortcut = KEYBOARD_SHORTCUTS[event.key];
+      if (shortcut) {
+        shortcut();
+        renderCurrentExpression();
+      }
+    } catch (error) {
+      console.error('Error al procesar la tecla:', error);
+    }
   });
 
-  render();
+  renderCurrentExpression();
+  renderHistory();
 })();

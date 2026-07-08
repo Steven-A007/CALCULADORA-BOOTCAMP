@@ -12,7 +12,12 @@
 
 <div class="calculator">
   <div class="top-row">
-    <button class="mode-toggle" id="angleMode" title="Cambiar entre grados y radianes">DEG</button>
+    <div class="top-row-buttons">
+      <button class="mode-toggle" id="historyToggle" title="Ver historial de operaciones">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+      </button>
+      <button class="mode-toggle" id="angleMode" title="Cambiar entre grados y radianes">DEG</button>
+    </div>
   </div>
 
   <div class="display">
@@ -20,58 +25,68 @@
     <div class="result-line" id="resultLine">0</div>
   </div>
 
-  <div class="pad" id="pad">
-    <button class="key k-shift" id="shiftKey" data-action="shift">2nd</button>
-    <button class="key k-op" data-action="paren-open">(</button>
-    <button class="key k-op" data-action="paren-close">)</button>
-    <button class="key k-op" data-action="factorial">x!</button>
-    <button class="key k-op" data-action="clear">C</button>
+  <div class="history-panel" id="historyPanel">
+    <div class="history-header">
+      <span>Historial</span>
+      <button class="history-clear" id="historyClear">Borrar</button>
+    </div>
+    <ul class="history-list" id="historyList">
+      <li class="history-empty" id="historyEmpty">Sin operaciones todavía</li>
+    </ul>
+  </div>
 
-    <button class="key k-func" data-action="func" data-value="sin" data-alt="asin">
+  <div class="pad" id="pad">
+    <button class="shift" id="shiftKey" data-action="shift">2nd</button>
+    <button class="operator" data-action="paren-open">(</button>
+    <button class="operator" data-action="paren-close">)</button>
+    <button class="operator" data-action="factorial">x!</button>
+    <button class="operator" data-action="clear">C</button>
+
+    <button class="function" data-action="func" data-value="sin" data-alt="asin">
       sin<span class="corner">sin⁻¹</span>
     </button>
-    <button class="key k-func" data-action="func" data-value="cos" data-alt="acos">
+    <button class="function" data-action="func" data-value="cos" data-alt="acos">
       cos<span class="corner">cos⁻¹</span>
     </button>
-    <button class="key k-func" data-action="func" data-value="tan" data-alt="atan">
+    <button class="function" data-action="func" data-value="tan" data-alt="atan">
       tan<span class="corner">tan⁻¹</span>
     </button>
-    <button class="key k-op" data-action="power">x^y</button>
-    <button class="key k-op" data-action="sqrt">√</button>
+    <button class="operator" data-action="power">x^y</button>
+    <button class="operator" data-action="sqrt">√</button>
 
-    <button class="key k-func" data-action="func" data-value="ln" data-alt="exp">
+    <button class="function" data-action="func" data-value="ln" data-alt="exp">
       ln<span class="corner">eˣ</span>
     </button>
-    <button class="key k-func" data-action="func" data-value="log" data-alt="pow10">
+    <button class="function" data-action="func" data-value="log" data-alt="pow10">
       log<span class="corner">10ˣ</span>
     </button>
-    <button class="key k-op" data-action="const" data-value="π">π</button>
-    <button class="key k-op" data-action="const" data-value="e">e</button>
-    <button class="key k-op" data-action="mod">mod</button>
+    <button class="operator" data-action="const" data-value="π">π</button>
+    <button class="operator" data-action="const" data-value="e">e</button>
+    <button class="operator" data-action="mod">mod</button>
 
-    <button class="key k-num" data-action="digit" data-value="7">7</button>
-    <button class="key k-num" data-action="digit" data-value="8">8</button>
-    <button class="key k-num" data-action="digit" data-value="9">9</button>
-    <button class="key k-op" data-action="op" data-value="÷">÷</button>
-    <button class="key k-op" data-action="backspace">⌫</button>
+    <button class="number" data-action="digit" data-value="7">7</button>
+    <button class="number" data-action="digit" data-value="8">8</button>
+    <button class="number" data-action="digit" data-value="9">9</button>
+    <button class="operator" data-action="op" data-value="÷">÷</button>
+    <button class="operator" data-action="backspace">⌫</button>
 
-    <button class="key k-num" data-action="digit" data-value="4">4</button>
-    <button class="key k-num" data-action="digit" data-value="5">5</button>
-    <button class="key k-num" data-action="digit" data-value="6">6</button>
-    <button class="key k-op" data-action="op" data-value="×">×</button>
-    <button class="key k-op" data-action="square">x²</button>
+    <button class="number" data-action="digit" data-value="4">4</button>
+    <button class="number" data-action="digit" data-value="5">5</button>
+    <button class="number" data-action="digit" data-value="6">6</button>
+    <button class="operator" data-action="op" data-value="×">×</button>
+    <button class="operator" data-action="square">x²</button>
 
-    <button class="key k-num" data-action="digit" data-value="1">1</button>
-    <button class="key k-num" data-action="digit" data-value="2">2</button>
-    <button class="key k-num" data-action="digit" data-value="3">3</button>
-    <button class="key k-op" data-action="op" data-value="−">−</button>
-    <button class="key k-op" data-action="reciprocal">1/x</button>
+    <button class="number" data-action="digit" data-value="1">1</button>
+    <button class="number" data-action="digit" data-value="2">2</button>
+    <button class="number" data-action="digit" data-value="3">3</button>
+    <button class="operator" data-action="op" data-value="−">−</button>
+    <button class="operator" data-action="reciprocal">1/x</button>
 
-    <button class="key k-num" data-action="digit" data-value="0">0</button>
-    <button class="key k-num" data-action="dot">.</button>
-    <button class="key k-op" data-action="sign">±</button>
-    <button class="key k-op" data-action="op" data-value="+">+</button>
-    <button class="key k-equal" data-action="equals">=</button>
+    <button class="number" data-action="digit" data-value="0">0</button>
+    <button class="number" data-action="dot">.</button>
+    <button class="operator" data-action="sign">±</button>
+    <button class="operator" data-action="op" data-value="+">+</button>
+    <button class="equal" data-action="equals">=</button>
   </div>
 </div>
 
