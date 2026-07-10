@@ -28,7 +28,7 @@
   const historyListElement = document.getElementById('historyList');
   const historyEmptyElement = document.getElementById('historyEmpty');
   const historyClearButton = document.getElementById('historyClear');
-  const HISTORY_STORAGE_KEY = 'sci100_history';
+  const HISTORY_STORAGE_KEY = 'operaciones';
   const HISTORY_MAX_ENTRIES = 50;
   let historyEntries = loadHistory();
 
@@ -49,7 +49,8 @@
   }
 
   function addHistoryEntry(expressionText, formattedResult) {
-    historyEntries.push({ expression: expressionText, result: formattedResult });
+    const entryText = `${expressionText} = ${formattedResult}`;
+    historyEntries.push(entryText);
     if (historyEntries.length > HISTORY_MAX_ENTRIES) {
       historyEntries = historyEntries.slice(historyEntries.length - HISTORY_MAX_ENTRIES);
     }
@@ -68,20 +69,24 @@
     historyEmptyElement.style.display = historyEntries.length ? 'none' : '';
 
     for (let i = historyEntries.length - 1; i >= 0; i--) {
-      const entry = historyEntries[i];
+      const entryText = historyEntries[i];
+      const separatorIndex = entryText.lastIndexOf(' = ');
+      const expressionPart = entryText.slice(0, separatorIndex);
+      const resultPart = entryText.slice(separatorIndex + 3);
+
       const item = document.createElement('li');
       item.className = 'history-item';
       item.innerHTML = `
-        <div class="history-expr">${entry.expression} =</div>
-        <div class="history-result">${entry.result}</div>
+        <div class="history-expr">${expressionPart} =</div>
+        <div class="history-result">${resultPart}</div>
       `;
-      item.addEventListener('click', () => reuseHistoryEntry(entry));
+      item.addEventListener('click', () => reuseHistoryEntry(resultPart));
       historyListElement.appendChild(item);
     }
   }
 
-  function reuseHistoryEntry(entry) {
-    expressionTokens = [{ type: TOKEN_TYPES.NUMBER, text: entry.result }];
+  function reuseHistoryEntry(resultText) {
+    expressionTokens = [{ type: TOKEN_TYPES.NUMBER, text: resultText }];
     hasJustEvaluated = true;
     renderCurrentExpression();
     closeHistoryPanel();
@@ -156,7 +161,6 @@
   function removeLastCharacterOrToken() {
     const lastToken = getLastToken();
     if (!lastToken) return;
-
     const isMultiDigitNumber = lastToken.type === TOKEN_TYPES.NUMBER && lastToken.text.length > 1;
     if (isMultiDigitNumber) {
       lastToken.text = lastToken.text.slice(0, -1);
@@ -202,7 +206,6 @@
 
   function evaluateExpression(tokens) {
     let position = 0;
-
     function peek() {
       return tokens[position];
     }
@@ -287,16 +290,13 @@
     function parsePrimary() {
       const token = peek();
       if (!token) throw new Error('Expresión incompleta');
-
       switch (token.type) {
         case TOKEN_TYPES.NUMBER:
           advance();
           return parseFloat(token.text);
-
         case TOKEN_TYPES.CONSTANT:
           advance();
           return token.text === 'π' ? Math.PI : Math.E;
-
         case TOKEN_TYPES.OPEN_PAREN: {
           advance();
           const value = parseExpression();
@@ -325,13 +325,11 @@
   function formatNumber(value) {
     if (typeof value !== 'number' || !isFinite(value) || isNaN(value)) return 'Error';
     if (Object.is(value, -0)) value = 0;
-
     const absValue = Math.abs(value);
     const isTooSmallOrTooBig = absValue > 0 && (absValue < 1e-9 || absValue >= 1e15);
     if (isTooSmallOrTooBig) {
       return value.toExponential(6).replace(/e\+?/, 'e');
     }
-
     return parseFloat(value.toPrecision(12)).toString();
   }
 
@@ -358,18 +356,14 @@
 
   function evaluateAndShowResult() {
     if (!expressionTokens.length) return;
-
     const expressionText = expressionTokens.map((t) => t.text).join('');
-
     try {
       const value = evaluateExpression(expressionTokens);
       const formatted = formatNumber(value);
-
       if (formatted === 'Error') {
         showError(expressionText);
         return;
       }
-
       showResult(expressionText, formatted);
       addHistoryEntry(expressionText, formatted);
       expressionTokens = [{ type: TOKEN_TYPES.NUMBER, text: formatted }];
@@ -452,20 +446,16 @@
   padElement.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
-
     const action = button.dataset.action;
-
     try {
       if (action === 'equals') {
         evaluateAndShowResult();
         return;
       }
-
       const handler = BUTTON_ACTIONS[action];
       if (handler) {
         handler(button);
       }
-
       renderCurrentExpression();
     } catch (error) {
       console.error('Error al procesar el botón:', error);
@@ -491,26 +481,22 @@
   window.addEventListener('keydown', (event) => {
     try {
       const isDigit = event.key >= '0' && event.key <= '9';
-
       if (isDigit) {
         addDigit(event.key);
         renderCurrentExpression();
         return;
       }
-
       if (event.key === '/') {
         event.preventDefault();
         addToken(TOKEN_TYPES.OPERATOR, '÷');
         renderCurrentExpression();
         return;
       }
-
       if (event.key === 'Enter' || event.key === '=') {
         event.preventDefault();
         evaluateAndShowResult();
         return;
       }
-
       const shortcut = KEYBOARD_SHORTCUTS[event.key];
       if (shortcut) {
         shortcut();
